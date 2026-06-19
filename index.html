@@ -64,6 +64,12 @@
     .fold-step-sub { font-size: 11px; color: var(--muted); font-family: sans-serif; }
     .fold-textarea { width: 100%; background: #0d0d0d; border: 1px solid #222; border-radius: 6px; color: var(--text); font-size: 15px; line-height: 1.7; padding: 14px; font-family: Georgia, serif; resize: vertical; outline: none; margin-bottom: 12px; }
     .fold-textarea:focus { border-color: var(--gold); }
+    .fold-input-wrap { position: relative; width: 100%; }
+    .fold-mic-btn { position: absolute; bottom: 10px; right: 10px; background: none; border: none; cursor: pointer; padding: 6px; border-radius: 50%; transition: background 0.2s; }
+    .fold-mic-btn:hover { background: #222; }
+    .fold-mic-btn.listening { animation: pulse 1s infinite; }
+    @keyframes pulse { 0%,100% { opacity:1; } 50% { opacity:0.4; } }
+    .fold-mic-icon { font-size: 18px; }
     .fold-btn { background: var(--gold); color: #000; border: none; border-radius: 4px; padding: 13px 24px; font-size: 12px; font-weight: 700; letter-spacing: 1.5px; text-transform: uppercase; font-family: "Bebas Neue", sans-serif; cursor: pointer; width: 100%; margin-top: 4px; transition: opacity 0.2s; }
     .fold-btn:hover { opacity: 0.85; }
     .fold-btn:disabled { background: #1a1a1a; color: #333; cursor: not-allowed; }
@@ -301,12 +307,74 @@
 const GOLD = "#C9A84C", RED = "#c0392b";
 const STEPS = [
   { key:"F", label:"FOCUS", sub:"only on what you control", question:"What part of this situation is actually in your control right now?", userHint:"Not what you wish you could control. Not what you think should be. What literally is.", coachHint:"If they list things outside their control, bring them back. Only what they can literally act on counts here." },
-  { key:"O", label:"OWN", sub:"only what\'s yours", question:"What part of this is genuinely yours to carry?", userHint:"Your behavior. Your actions. Your choices. That\'s all that belongs to you here.", coachHint:"Focus only on their own behavior, actions, and choices. If they bring up what someone else did, redirect them back to themselves." },
+  { key:"O", label:"OWN", sub:"only what's yours", question:"What part of this is genuinely yours to carry?", userHint:"Your behavior. Your actions. Your choices. That's all that belongs to you here.", coachHint:"Focus only on their own behavior, actions, and choices. If they bring up what someone else did, redirect them back to themselves." },
   { key:"L", label:"LET", sub:"time take care of time", question:"What in this situation are you trying to force that time would handle better?", userHint:"Remember — in time, it will get better. Focus on that. Not the urgency of right now.", coachHint:"Help them identify what they are gripping too hard. The goal is to release urgency — not everything needs to be solved today." },
   { key:"D", label:"DECIDE", sub:"the meaning", question:"What meaning will you choose to assign to this moment?", userHint:"Not the positive spin. Not what sounds good. The meaning that actually serves you moving forward.", coachHint:"Push back if the meaning keeps them stuck or makes them a victim. What meaning actually moves them forward?" }
 ];
 
 let state = { phase:"intro", situation:"", stepIndex:0, currentInput:"", answers:[], loading:false, coachReply:"", readyToAdvance:false, closingMessage:"", closingLoading:false, crisisInput:"", crisisReply:"", crisisLoading:false, crisisDone:false };
+
+
+// VOICE TO TEXT
+let recognition = null;
+let activeField = null;
+let isListening = false;
+
+function initVoice() {
+  const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!SpeechRecognition) return null;
+  const r = new SpeechRecognition();
+  r.continuous = true;
+  r.interimResults = true;
+  r.lang = "en-US";
+  r.onresult = (e) => {
+    let transcript = "";
+    for (let i = e.resultIndex; i < e.results.length; i++) {
+      transcript += e.results[i][0].transcript;
+    }
+    if (activeField === "situation") state.situation = transcript;
+    else if (activeField === "current") state.currentInput = transcript;
+    else if (activeField === "crisis") state.crisisInput = transcript;
+    render();
+  };
+  r.onerror = () => { stopListening(); };
+  r.onend = () => { if (isListening) r.start(); };
+  return r;
+}
+
+function toggleMic(field) {
+  if (!recognition) recognition = initVoice();
+  if (!recognition) { alert("Voice input is not supported in this browser. Try Chrome or Safari."); return; }
+  if (isListening && activeField === field) {
+    stopListening();
+  } else {
+    activeField = field;
+    isListening = true;
+    recognition.start();
+    render();
+  }
+}
+
+function stopListening() {
+  isListening = false;
+  activeField = null;
+  if (recognition) { try { recognition.stop(); } catch(e) {} }
+  render();
+}
+
+function micBtn(field) {
+  const active = isListening && activeField === field;
+  return `<button class="fold-mic-btn ${active ? "listening" : ""}" onclick="toggleMic('${field}')" title="${active ? "Stop recording" : "Speak your answer"}">
+    <span class="fold-mic-icon">${active ? "🔴" : "🎙️"}</span>
+  </button>`;
+}
+
+function textarea(field, rows, placeholder, value) {
+  return `<div class="fold-input-wrap">
+    <textarea class="fold-textarea" rows="${rows}" placeholder="${placeholder}" style="padding-right:44px;" oninput="state.${field}=this.value">${value}</textarea>
+    ${micBtn(field)}
+  </div>`;
+}
 
 function render() {
   const app = document.getElementById("fold-app");
@@ -330,9 +398,9 @@ function render() {
 
   if (s.phase==="intro") {
     html += `<p style="font-size:20px;font-weight:600;line-height:1.5;margin-bottom:12px;color:#fff;">What do you need right now?</p>
-    <p style="font-size:14px;color:#666;line-height:1.8;margin-bottom:28px;font-weight:300;">FOLD won\'t always change what\'s happening.<br/>It will always change who you are while it\'s happening.</p>
-    <button class="fold-btn" onclick="go(\'situation\')">I need to process something</button>
-    <button class="fold-btn-ghost" onclick="go(\'crisis\')">I\'m about to react</button>`;
+    <p style="font-size:14px;color:#666;line-height:1.8;margin-bottom:28px;font-weight:300;">FOLD won't always change what's happening.<br/>It will always change who you are while it's happening.</p>
+    <button class="fold-btn" onclick="go('situation')">I need to process something</button>
+    <button class="fold-btn-ghost" onclick="go('crisis')">I'm about to react</button>`;
   }
 
   else if (s.phase==="crisis") {
@@ -340,23 +408,23 @@ function render() {
     html += `<div style="display:flex;align-items:center;gap:10px;margin-bottom:24px;"><div style="width:8px;height:8px;border-radius:50%;background:${RED};"></div><span style="font-size:10px;color:${RED};letter-spacing:3px;text-transform:uppercase;font-family:sans-serif;">Crisis Mode</span></div>`;
     if (!s.crisisDone) {
       html += `<p style="font-size:18px;font-weight:600;line-height:1.6;margin-bottom:10px;color:#fff;">Stop. What are you about to do?</p>
-      <p style="font-size:13px;color:#555;font-style:italic;line-height:1.7;margin-bottom:20px;">Don\'t filter it. Say exactly what you\'re thinking about doing right now.</p>
+      <p style="font-size:13px;color:#555;font-style:italic;line-height:1.7;margin-bottom:20px;">Don't filter it. Say exactly what you're thinking about doing right now.</p>
       <textarea class="fold-textarea" rows="4" placeholder="Write it here..." oninput="state.crisisInput=this.value">${s.crisisInput}</textarea>
       <button class="fold-btn" onclick="submitCrisis()" ${!s.crisisInput.trim()||s.crisisLoading?"disabled":""}>${s.crisisLoading?"Processing...":"Submit"}</button>`;
     } else {
       html += `<div class="fold-crisis-reply"><div class="fold-crisis-label">Coach</div><div class="fold-coach-text">${s.crisisReply}</div></div>
-      <p style="font-size:13px;color:#555;line-height:1.7;margin-bottom:8px;">When you\'re ready — do you want to FOLD through what\'s underneath this?</p>
+      <p style="font-size:13px;color:#555;line-height:1.7;margin-bottom:8px;">When you're ready — do you want to FOLD through what's underneath this?</p>
       <button class="fold-btn" onclick="goToFull()">Yes — take me through the full process</button>
-      <button style="background:transparent;color:#444;border:none;padding:12px;font-size:12px;cursor:pointer;width:100%;margin-top:6px;font-family:sans-serif;" onclick="resetAll()">I\'m good. Take me back.</button>`;
+      <button style="background:transparent;color:#444;border:none;padding:12px;font-size:12px;cursor:pointer;width:100%;margin-top:6px;font-family:sans-serif;" onclick="resetAll()">I'm good. Take me back.</button>`;
     }
   }
 
   else if (s.phase==="situation") {
     html += `<p class="fold-phase-label">Before we start</p>
-    <p style="font-size:18px;font-weight:600;line-height:1.5;margin-bottom:10px;color:#fff;">What\'s actually going on?</p>
-    <p style="font-size:13px;color:#555;line-height:1.7;margin-bottom:20px;font-style:italic;">Don\'t edit it. Don\'t make it sound better than it feels. Just say it.</p>
+    <p style="font-size:18px;font-weight:600;line-height:1.5;margin-bottom:10px;color:#fff;">What's actually going on?</p>
+    <p style="font-size:13px;color:#555;line-height:1.7;margin-bottom:20px;font-style:italic;">Don't edit it. Don't make it sound better than it feels. Just say it.</p>
     <textarea class="fold-textarea" rows="5" placeholder="Write it here..." oninput="state.situation=this.value">${s.situation}</textarea>
-    <button class="fold-btn" onclick="go(\'stepping\')" ${!s.situation.trim()?"disabled":""}>Let\'s go</button>`;
+    <button class="fold-btn" onclick="go('stepping')" ${!s.situation.trim()?"disabled":""}>Let's go</button>`;
   }
 
   else if (s.phase==="stepping") {
@@ -367,7 +435,7 @@ function render() {
     <p class="fold-question">${step.question}</p>
     <p class="fold-hint">${step.userHint}</p>`;
     if (!s.coachReply) {
-      html += `<textarea class="fold-textarea" rows="4" placeholder="Write your answer..." oninput="state.currentInput=this.value">${s.currentInput}</textarea>
+      html += `${textarea("current", 4, "Write your answer...", s.currentInput)}
       <button class="fold-btn" onclick="submitStep()" ${!s.currentInput.trim()||s.loading?"disabled":""}>${s.loading?"Processing...":"Submit"}</button>`;
     } else {
       html += `<div class="fold-coach-reply"><div class="fold-coach-label">Coach</div><div class="fold-coach-text">${s.coachReply}</div></div>`;
@@ -387,9 +455,9 @@ function render() {
     </div>
     <div style="font-size:10px;color:#555;letter-spacing:2px;text-transform:uppercase;font-family:sans-serif;margin-bottom:14px;">Your session</div>`;
     STEPS.forEach((st,i) => {
-      html += `<div class="fold-session-card"><div style="display:flex;gap:10px;align-items:baseline;margin-bottom:6px;"><span style="font-family:\'Bebas Neue\',sans-serif;font-size:16px;color:${GOLD};">${st.key}</span><span style="font-size:10px;color:#555;text-transform:uppercase;letter-spacing:1px;font-family:sans-serif;">${st.label}</span></div><p style="font-size:14px;color:#aaa;line-height:1.65;margin:0;">${s.answers[i]?.userResponse||""}</p></div>`;
+      html += `<div class="fold-session-card"><div style="display:flex;gap:10px;align-items:baseline;margin-bottom:6px;"><span style="font-family:'Bebas Neue',sans-serif;font-size:16px;color:${GOLD};">${st.key}</span><span style="font-size:10px;color:#555;text-transform:uppercase;letter-spacing:1px;font-family:sans-serif;">${st.label}</span></div><p style="font-size:14px;color:#aaa;line-height:1.65;margin:0;">${s.answers[i]?.userResponse||""}</p></div>`;
     });
-    html += `<p class="fold-quote">"FOLD won\'t always change what\'s happening.<br/>It will always change who you are while it\'s happening."</p>
+    html += `<p class="fold-quote">"FOLD won't always change what's happening.<br/>It will always change who you are while it's happening."</p>
     <button class="fold-btn" onclick="resetAll()">FOLD through something else</button>`;
   }
 
@@ -420,7 +488,7 @@ async function submitStep() {
   state.loading = true; state.coachReply = ""; state.readyToAdvance = false; render();
   const step = STEPS[state.stepIndex];
   const prior = state.answers.length > 0 ? state.answers.map((a,i)=>`${STEPS[i].key}: "${a.userResponse}" → ${a.coachReply}`).join("\n") : "";
-  const prompt = `You are a FOLD coach. The user is on step ${step.key} — ${step.label}: ${step.sub}.\nCoaching guideline: ${step.coachHint}\nSituation: "${state.situation}"\n${prior}\nResponse: "${state.currentInput}"\n\nReply in 2-4 sentences. Direct, not soft. Push back if shallow. End with ONE sharp follow-up question OR exactly "You\'re ready to move forward." No bullets. No headers.`;
+  const prompt = `You are a FOLD coach. The user is on step ${step.key} — ${step.label}: ${step.sub}.\nCoaching guideline: ${step.coachHint}\nSituation: "${state.situation}"\n${prior}\nResponse: "${state.currentInput}"\n\nReply in 2-4 sentences. Direct, not soft. Push back if shallow. End with ONE sharp follow-up question OR exactly "You're ready to move forward." No bullets. No headers.`;
   try { state.coachReply = await callClaude(prompt) || "Keep going."; state.readyToAdvance = true; } catch { state.coachReply = "Something went wrong. Try again."; }
   state.loading = false; render();
 }
@@ -428,7 +496,7 @@ async function submitStep() {
 async function submitCrisis() {
   if (!state.crisisInput.trim() || state.crisisLoading) return;
   state.crisisLoading = true; render();
-  const prompt = `You are a FOLD crisis coach. Someone is about to react destructively. They said: "${state.crisisInput}"\n\nIn 3 sentences interrupt the pattern. Name what\'s underneath — control, ownership, urgency, or meaning. Direct and human. Then ask ONE question that will slow them down.\nNo bullets. No headers. Short. Sharp. Real.`;
+  const prompt = `You are a FOLD crisis coach. Someone is about to react destructively. They said: "${state.crisisInput}"\n\nIn 3 sentences interrupt the pattern. Name what's underneath — control, ownership, urgency, or meaning. Direct and human. Then ask ONE question that will slow them down.\nNo bullets. No headers. Short. Sharp. Real.`;
   try { state.crisisReply = await callClaude(prompt) || "Before you do anything — what are you actually trying to protect right now?"; state.crisisDone = true; } catch { state.crisisReply = "Take a breath. What are you actually trying to protect right now?"; state.crisisDone = true; }
   state.crisisLoading = false; render();
 }
@@ -450,11 +518,11 @@ async function generateClosing() {
 
 function handleEmail() {
   const el = document.getElementById("main-email");
-  if (el && el.value.includes("@")) { el.value = ""; el.placeholder = "You\'re in. Welcome to the process."; }
+  if (el && el.value.includes("@")) { el.value = ""; el.placeholder = "You're in. Welcome to the process."; }
 }
 function handleBookEmail() {
   const el = document.getElementById("fold-book-email");
-  if (el && el.value.includes("@")) { el.value = ""; el.placeholder = "We\'ll let you know."; }
+  if (el && el.value.includes("@")) { el.value = ""; el.placeholder = "We'll let you know."; }
 }
 
 render();
