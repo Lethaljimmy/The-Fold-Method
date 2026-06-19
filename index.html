@@ -369,10 +369,12 @@ function micBtn(field) {
   </button>`;
 }
 
-function textarea(field, rows, placeholder, value) {
+function textarea(stateKey, rows, placeholder, value, btnId, voiceField) {
+  const vf = voiceField || stateKey;
+  const liveUpdate = btnId ? `document.getElementById('${btnId}').disabled=!this.value.trim();` : "";
   return `<div class="fold-input-wrap">
-    <textarea class="fold-textarea" rows="${rows}" placeholder="${placeholder}" style="padding-right:44px;" oninput="state.${field}=this.value">${value}</textarea>
-    ${micBtn(field)}
+    <textarea class="fold-textarea" rows="${rows}" placeholder="${placeholder}" style="padding-right:44px;" oninput="state.${stateKey}=this.value;${liveUpdate}">${value}</textarea>
+    ${micBtn(vf)}
   </div>`;
 }
 
@@ -409,8 +411,8 @@ function render() {
     if (!s.crisisDone) {
       html += `<p style="font-size:18px;font-weight:600;line-height:1.6;margin-bottom:10px;color:#fff;">Stop. What are you about to do?</p>
       <p style="font-size:13px;color:#555;font-style:italic;line-height:1.7;margin-bottom:20px;">Don't filter it. Say exactly what you're thinking about doing right now.</p>
-      <textarea class="fold-textarea" rows="4" placeholder="Write it here..." oninput="state.crisisInput=this.value">${s.crisisInput}</textarea>
-      <button class="fold-btn" onclick="submitCrisis()" ${!s.crisisInput.trim()||s.crisisLoading?"disabled":""}>${s.crisisLoading?"Processing...":"Submit"}</button>`;
+      <textarea class="fold-textarea" rows="4" placeholder="Write it here..." oninput="state.crisisInput=this.value;document.getElementById('crisis-btn').disabled=!this.value.trim();">${s.crisisInput}</textarea>
+      <button class="fold-btn" id="crisis-btn" onclick="submitCrisis()" ${!s.crisisInput.trim()||s.crisisLoading?"disabled":""}>${s.crisisLoading?"Processing...":"Submit"}</button>`;
     } else {
       html += `<div class="fold-crisis-reply"><div class="fold-crisis-label">Coach</div><div class="fold-coach-text">${s.crisisReply}</div></div>
       <p style="font-size:13px;color:#555;line-height:1.7;margin-bottom:8px;">When you're ready — do you want to FOLD through what's underneath this?</p>
@@ -423,8 +425,8 @@ function render() {
     html += `<p class="fold-phase-label">Before we start</p>
     <p style="font-size:18px;font-weight:600;line-height:1.5;margin-bottom:10px;color:#fff;">What's actually going on?</p>
     <p style="font-size:13px;color:#555;line-height:1.7;margin-bottom:20px;font-style:italic;">Don't edit it. Don't make it sound better than it feels. Just say it.</p>
-    <textarea class="fold-textarea" rows="5" placeholder="Write it here..." oninput="state.situation=this.value">${s.situation}</textarea>
-    <button class="fold-btn" onclick="go('stepping')" ${!s.situation.trim()?"disabled":""}>Let's go</button>`;
+    <textarea class="fold-textarea" rows="5" placeholder="Write it here..." oninput="state.situation=this.value;document.getElementById('go-btn').disabled=!this.value.trim();">${s.situation}</textarea>
+    <button class="fold-btn" id="go-btn" onclick="go('stepping')" ${!s.situation.trim()?"disabled":""}>Let's go</button>`;
   }
 
   else if (s.phase==="stepping") {
@@ -435,8 +437,8 @@ function render() {
     <p class="fold-question">${step.question}</p>
     <p class="fold-hint">${step.userHint}</p>`;
     if (!s.coachReply) {
-      html += `${textarea("current", 4, "Write your answer...", s.currentInput)}
-      <button class="fold-btn" onclick="submitStep()" ${!s.currentInput.trim()||s.loading?"disabled":""}>${s.loading?"Processing...":"Submit"}</button>`;
+      html += `${textarea("currentInput", 4, "Write your answer...", s.currentInput, "submit-btn", "current")}
+      <button class="fold-btn" id="submit-btn" onclick="submitStep()" ${!s.currentInput.trim()||s.loading?"disabled":""}>${s.loading?"Processing...":"Submit"}</button>`;
     } else {
       html += `<div class="fold-coach-reply"><div class="fold-coach-label">Coach</div><div class="fold-coach-text">${s.coachReply}</div></div>`;
       if (s.readyToAdvance) {
